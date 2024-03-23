@@ -33,20 +33,33 @@
 
     Меняем пароль у user
 
+    Связываем существубщий репрозиторий гит с данной системой через
+    Personal access tokens
+
 2.  Выполним практические задания
 
 ``` r
-library(arrow)
+library(arrow, warn.conflicts = FALSE)
 ```
 
     Some features are not enabled in this build of Arrow. Run `arrow_info()` for more information.
 
+``` r
+library(tidyverse, warn.conflicts = FALSE)
+```
 
-    Attaching package: 'arrow'
+    ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+    ✔ dplyr     1.1.4     ✔ readr     2.1.5
+    ✔ forcats   1.0.0     ✔ stringr   1.5.1
+    ✔ ggplot2   3.4.4     ✔ tibble    3.2.1
+    ✔ lubridate 1.9.3     ✔ tidyr     1.3.1
+    ✔ purrr     1.0.2     
 
-    The following object is masked from 'package:utils':
-
-        timestamp
+    ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+    ✖ lubridate::duration() masks arrow::duration()
+    ✖ dplyr::filter()       masks stats::filter()
+    ✖ dplyr::lag()          masks stats::lag()
+    ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
 
 Задание 1: Найдите утечку данных из Вашей сети
 
@@ -58,10 +71,37 @@ library(arrow)
 IP-адрес
 
 ``` r
-5+7
+dir.create("data", showWarnings = FALSE)
+
+curl::multi_download(
+  "https://storage.yandexcloud.net/arrow-datasets/tm_data.pqt",
+  "data/testdata",
+  resume = TRUE
+)
 ```
 
-    [1] 12
+    # A tibble: 1 × 10
+      success status_code resumefrom url    destfile error type  modified
+      <lgl>         <int>      <dbl> <chr>  <chr>    <chr> <chr> <dttm>  
+    1 TRUE            416          0 https… /home/u… <NA>  appl… NA      
+    # ℹ 2 more variables: time <dbl>, headers <list>
+
+``` r
+dt <- open_dataset(
+  sources = "data/testdata", 
+  format = "parquet"
+)
+glimpse(dt) 
+```
+
+    FileSystemDataset with 1 Parquet file
+    105,747,730 rows x 5 columns
+    $ timestamp <double> 1.578326e+12, 1.578326e+12, 1.578326e+12, 1.578326e+12, 1.5…
+    $ src       <string> "13.43.52.51", "16.79.101.100", "18.43.118.103", "15.71.108…
+    $ dst       <string> "18.70.112.62", "12.48.65.39", "14.51.30.86", "14.50.119.33…
+    $ port       <int32> 40, 92, 27, 57, 115, 92, 65, 123, 79, 72, 123, 123, 22, 118…
+    $ bytes      <int32> 57354, 11895, 898, 7496, 20979, 8620, 46033, 1500, 979, 103…
+    Call `print()` for full schema details
 
 Задание 2: Надите утечку данных 2
 

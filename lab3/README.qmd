@@ -36,10 +36,13 @@ editor: visual
 
     Меняем пароль у user
 
+    Связываем существубщий репрозиторий гит с данной системой через Personal access tokens
+
 2.  Выполним практические задания
 
 ```{r}
-library(arrow)
+library(arrow, warn.conflicts = FALSE)
+library(tidyverse, warn.conflicts = FALSE)
 ```
 
 Задание 1: Найдите утечку данных из Вашей сети
@@ -47,7 +50,22 @@ library(arrow)
 Важнейшие документы с результатами нашей исследовательской деятельности в области создания вакцин скачиваются в виде больших заархивированных дампов. Один из хостов в нашей сети используется для пересылки этой информации – он пересылает гораздо больше информации на внешние ресурсы в Интернете, чем остальные компьютеры нашей сети. Определите его IP-адрес
 
 ```{r}
-5+7
+dir.create("data", showWarnings = FALSE)
+
+curl::multi_download(
+  "https://storage.yandexcloud.net/arrow-datasets/tm_data.pqt",
+  "data/testdata",
+  resume = TRUE
+)
+
+```
+
+```{r}
+dt <- open_dataset(
+  sources = "data/testdata", 
+  format = "parquet"
+)
+glimpse(dt) 
 ```
 
 Задание 2: Надите утечку данных 2
