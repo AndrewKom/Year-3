@@ -119,7 +119,7 @@ z1 |> collect()
 Ответ  
 13.37.84.125
 
-### Задание 2: Надите утечку данных 2
+### Задание 2: Найдите утечку данных 2
 
 Другой атакующий установил автоматическую задачу в системном
 планировщике cron для экспорта содержимого внутренней wiki системы. Эта
@@ -173,7 +173,7 @@ z2_2 |> collect()
 Ответ  
 12.55.77.96
 
-### Задание 3: Надите утечку данных 3
+### Задание 3: Найдите утечку данных 3
 
 Еще один нарушитель собирает содержимое электронной почты и отправляет в
 Интернет используя порт, который обычно используется для другого типа
@@ -183,13 +183,36 @@ z2_2 |> collect()
 отличается от нарушителей из предыдущих задач
 
 ``` r
-x<-5+7
-x
+z3 <- dt %>% filter(!str_detect(src, "^13.37.84.125")) %>% 
+  filter(!str_detect(src, "^12.55.77.96")) %>% 
+  filter(str_detect(src, "^12.") | str_detect(src, "^13.") | str_detect(src, "^14."))  %>%
+  filter(!str_detect(dst, "^12.") | !str_detect(dst, "^13.") | !str_detect(dst, "^14."))  %>% select(src, bytes, port) 
+
+
+z3_1 <-z3 %>%  group_by(port) %>% summarise("mean"=mean(bytes), "max"=max(bytes), "sum" = sum(bytes)) %>% 
+  mutate("Raz"= max-mean)  %>% filter(Raz!=0, Raz>170000)
+
+z3_1 |> collect()
 ```
 
-    [1] 12
+    # A tibble: 1 × 5
+       port   mean    max         sum     Raz
+      <int>  <dbl>  <int>       <dbl>   <dbl>
+    1    37 33348. 209402 48192673159 176054.
+
+``` r
+z3_2 <- z3  %>% filter(port==37) %>% group_by(src) %>% 
+  summarise("mean"=mean(bytes)) %>% filter(mean>37543) %>% select(src)
+z3_2 |> collect()
+```
+
+    # A tibble: 1 × 1
+      src        
+      <chr>      
+    1 13.46.35.35
 
 Ответ  
+13.46.35.35
 
 ## Оценка результатов
 
