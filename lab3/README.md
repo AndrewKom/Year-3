@@ -127,7 +127,51 @@ z1 |> collect()
 чем остальные хосты. Определите IP этой системы. Известно, что ее IP
 адрес отличается от нарушителя из предыдущей задачи
 
+``` r
+z2 <- dt %>%
+      select(timestamp, src, dst, bytes) %>%
+      mutate(trafic = (str_detect(src, "^((12|13|14)\\.)") & !str_detect(dst, "^((12|13|14)\\.)")),time = hour(as_datetime(timestamp/1000))) %>%
+      filter(trafic == TRUE, time >= 0 & time <= 24) %>% group_by(time) %>%
+      summarise(trafictime = n()) %>% arrange(desc(trafictime))
+z2 |> collect()
+```
+
+    # A tibble: 24 × 2
+        time trafictime
+       <int>      <int>
+     1    16    4490576
+     2    22    4489703
+     3    18    4489386
+     4    23    4488093
+     5    19    4487345
+     6    21    4487109
+     7    17    4483578
+     8    20    4482712
+     9    13     169617
+    10     7     169241
+    # ℹ 14 more rows
+
+Определяем рабочие часы:  
+Учитывая нагрузку на трафик, рабочее время: 16:00-24:00
+
+``` r
+z2_2 <- dt %>% mutate(time = hour(as_datetime(timestamp/1000))) %>% 
+  filter(!str_detect(src, "^13.37.84.125")) %>% 
+  filter(str_detect(src, "^12.") | str_detect(src, "^13.") | str_detect(src, "^14."))  %>%
+  filter(!str_detect(dst, "^12.") | !str_detect(dst, "^13.") | !str_detect(dst, "^14."))  %>%
+  filter(time >= 1 & time <= 15) %>% 
+  group_by(src) %>% summarise("sum" = sum(bytes)) %>%
+  filter(sum>290000000) %>% select(src,sum) 
+z2_2 |> collect()
+```
+
+    # A tibble: 1 × 2
+      src               sum
+      <chr>           <int>
+    1 12.55.77.96 298669501
+
 Ответ  
+12.55.77.96
 
 ### Задание 3: Надите утечку данных 3
 

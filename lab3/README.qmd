@@ -86,12 +86,32 @@ z1 |> collect()
 Другой атакующий установил автоматическую задачу в системном планировщике cron для экспорта содержимого внутренней wiki системы. Эта система генерирует большое количество трафика в нерабочие часы, больше чем остальные хосты. Определите IP этой системы. Известно, что ее IP адрес отличается от нарушителя из предыдущей задачи
 
 ```{r}
+z2 <- dt %>%
+      select(timestamp, src, dst, bytes) %>%
+      mutate(trafic = (str_detect(src, "^((12|13|14)\\.)") & !str_detect(dst, "^((12|13|14)\\.)")),time = hour(as_datetime(timestamp/1000))) %>%
+      filter(trafic == TRUE, time >= 0 & time <= 24) %>% group_by(time) %>%
+      summarise(trafictime = n()) %>% arrange(desc(trafictime))
+z2 |> collect()
+```
 
+Определяем рабочие часы:
+
+:   Учитывая нагрузку на трафик, рабочее время: 16:00-24:00
+
+```{r}
+z2_2 <- dt %>% mutate(time = hour(as_datetime(timestamp/1000))) %>% 
+  filter(!str_detect(src, "^13.37.84.125")) %>% 
+  filter(str_detect(src, "^12.") | str_detect(src, "^13.") | str_detect(src, "^14."))  %>%
+  filter(!str_detect(dst, "^12.") | !str_detect(dst, "^13.") | !str_detect(dst, "^14."))  %>%
+  filter(time >= 1 & time <= 15) %>% 
+  group_by(src) %>% summarise("sum" = sum(bytes)) %>%
+  filter(sum>290000000) %>% select(src,sum) 
+z2_2 |> collect()
 ```
 
 Ответ
 
-:   
+:   12.55.77.96
 
 ### Задание 3: Надите утечку данных 3
 
