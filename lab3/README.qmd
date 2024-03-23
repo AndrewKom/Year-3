@@ -46,7 +46,7 @@ editor: visual
 
     ![](foto/5.png)
 
-    Связываем существубщий репозиторий гит с данной системой через Personal access tokens
+    Связываем существующий репозиторий гит с данной системой через Personal access tokens
 
     ![](foto/4.png)
 
