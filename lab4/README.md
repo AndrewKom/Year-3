@@ -49,6 +49,19 @@ library(duckdb, warn.conflicts = FALSE)
 
     Загрузка требуемого пакета: DBI
 
+``` r
+connection <- dbConnect(duckdb::duckdb(), dbdir = "")
+dbExecute(conn = connection, "INSTALL httpfs; LOAD httpfs;")
+```
+
+    [1] 0
+
+``` r
+PQF = "https://storage.yandexcloud.net/arrow-datasets/tm_data.pqt"
+SQL <- "SELECT * FROM read_parquet([?])"
+data <- dbGetQuery(connection, SQL, list(PQF))
+```
+
 ### Задание 1: Найдите утечку данных из Вашей сети
 
 Важнейшие документы с результатами нашей исследовательской деятельности
@@ -59,50 +72,18 @@ library(duckdb, warn.conflicts = FALSE)
 IP-адрес
 
 ``` r
-dir.create("data", showWarnings = FALSE)
-
-curl::multi_download(
-  "https://storage.yandexcloud.net/arrow-datasets/tm_data.pqt",
-  "data/testdata",
-  resume = TRUE
-)
-```
-
-    # A tibble: 1 × 10
-      success status_code resumefrom url    destfile error type  modified
-      <lgl>         <int>      <dbl> <chr>  <chr>    <chr> <chr> <dttm>  
-    1 TRUE            416          0 https… "C:\\Us… <NA>  appl… NA      
-    # ℹ 2 more variables: time <dbl>, headers <list>
-
-``` r
-dt <- open_dataset(
-  sources = "data/testdata",
-  schema = schema(timestamp=int64(),src=utf8(),dst=utf8(),port=uint32(),bytes=uint32())
-)
-glimpse(dt) 
-```
-
-    FileSystemDataset with 1 Parquet file
-    105,747,730 rows x 5 columns
-    $ timestamp <int64> 1578326400001, 1578326400005, 1578326400007, 1578326400011, …
-    $ src      <string> "13.43.52.51", "16.79.101.100", "18.43.118.103", "15.71.108.…
-    $ dst      <string> "18.70.112.62", "12.48.65.39", "14.51.30.86", "14.50.119.33"…
-    $ port     <uint32> 40, 92, 27, 57, 115, 92, 65, 123, 79, 72, 123, 123, 22, 118,…
-    $ bytes    <uint32> 57354, 11895, 898, 7496, 20979, 8620, 46033, 1500, 979, 1036…
-
-``` r
-z1 <- dt %>%
+z1 <- data %>%
   filter(str_detect(src, "^12.") | str_detect(src, "^13.") | str_detect(src, "^14."))  %>%
-  filter(!str_detect(dst, "^12.") | !str_detect(dst, "^13.") | !str_detect(dst, "^14."))  %>%
+  filter(!grepl('^1[2-4].*', dst))  %>%
   group_by(src) %>% summarise("sum" = sum(bytes)) %>%  
-  filter(sum>6000000000) %>% select(src,sum) 
+  arrange(desc(sum)) %>% select(src,sum) %>% slice(1)
 z1 |> collect()
 ```
 
     # A tibble: 1 × 2
       src                  sum
       <chr>              <dbl>
-    1 13.37.84.125 11152202376
+    1 13.37.84.125 10625497574
 
 Ответ  
 13.37.84.125
@@ -116,7 +97,7 @@ z1 |> collect()
 адрес отличается от нарушителя из предыдущей задачи
 
 ``` r
-z2 <- dt %>%
+z2 <- data %>%
       select(timestamp, src, dst, bytes) %>%
       mutate(trafic = (str_detect(src, "^((12|13|14)\\.)") & !str_detect(dst, "^((12|13|14)\\.)")),time = hour(as_datetime(timestamp/1000))) %>%
       filter(trafic == TRUE, time >= 0 & time <= 24) %>% group_by(time) %>%
@@ -140,23 +121,23 @@ z2 |> collect()
     # ℹ 14 more rows
 
 Определяем рабочие часы:  
-Учитывая нагрузку на трафик, рабочее время: 16:00-24:00
+Учитывая нагрузку на трафик, рабочее время: 16:00-23:00
 
 ``` r
-z2_2 <- dt %>% mutate(time = hour(as_datetime(timestamp/1000))) %>% 
+z2_2 <- data %>% mutate(time = hour(as_datetime(timestamp/1000))) %>% 
   filter(!str_detect(src, "^13.37.84.125")) %>% 
   filter(str_detect(src, "^12.") | str_detect(src, "^13.") | str_detect(src, "^14."))  %>%
-  filter(!str_detect(dst, "^12.") | !str_detect(dst, "^13.") | !str_detect(dst, "^14."))  %>%
-  filter(time >= 1 & time <= 15) %>% 
+  filter(!grepl('^1[2-4].*', dst))  %>%
+  filter(time >= 0 & time <= 15) %>% 
   group_by(src) %>% summarise("sum" = sum(bytes)) %>%
-  filter(sum>290000000) %>% select(src,sum) 
+  arrange(desc(sum)) %>% select(src,sum) %>% slice(1)
 z2_2 |> collect()
 ```
 
     # A tibble: 1 × 2
       src               sum
       <chr>           <int>
-    1 12.55.77.96 298669501
+    1 12.55.77.96 289566918
 
 Ответ  
 12.55.77.96
@@ -171,7 +152,7 @@ z2_2 |> collect()
 отличается от нарушителей из предыдущих задач
 
 ``` r
-z3 <- dt %>% filter(!str_detect(src, "^13.37.84.125")) %>% 
+z3 <- data %>% filter(!str_detect(src, "^13.37.84.125")) %>% 
   filter(!str_detect(src, "^12.55.77.96")) %>% 
   filter(str_detect(src, "^12.") | str_detect(src, "^13.") | str_detect(src, "^14."))  %>%
   filter(!str_detect(dst, "^12.") | !str_detect(dst, "^13.") | !str_detect(dst, "^14."))  %>% select(src, bytes, port) 
@@ -211,6 +192,20 @@ z3_2 |> collect()
 
 Како номер порта использует бот-панель для управления ботами?
 
+``` r
+z4 <- data %>% group_by(port) %>% 
+  summarise(z4_1 = mean(bytes)-min(bytes)) %>% arrange(z4_1) %>% filter(z4_1!=0) %>% select(port,z4_1) %>% slice(1)
+z4 |> collect()
+```
+
+    # A tibble: 1 × 2
+       port  z4_1
+      <int> <dbl>
+    1   124 0.327
+
+Ответ  
+124
+
 ### Задание 5: Обнаружение P2P трафика
 
 Иногда компрометация сети проявляется в нехарактерном трафике между
@@ -224,6 +219,24 @@ z3_2 |> collect()
 Какой уникальный порт используется этой бот сетью для внутреннего
 общения между собой?
 
+``` r
+z5 <- data %>%
+  filter(str_detect(src, "^12.") | str_detect(src, "^13.") | str_detect(src, "^14."))  %>%
+  filter(str_detect(dst, "^12.") | str_detect(dst, "^13.") | str_detect(dst, "^14."))  %>% 
+  group_by(port) %>%
+  summarise(z5_1 = max(bytes) - min(bytes)) %>%
+  arrange(desc(z5_1)) %>% select(port) %>% slice(1)
+z5 |> collect()
+```
+
+    # A tibble: 1 × 1
+       port
+      <int>
+    1   115
+
+Ответ  
+115
+
 ### Задание 6: Чемпион малвари
 
 Нашу сеть только что внесли в списки спам-ферм. Один из хостов сети
@@ -232,6 +245,21 @@ z3_2 |> collect()
 у данного хоста нет.
 
 Определите IP такого хоста.
+
+``` r
+z6 <- data %>%
+  filter(str_detect(src, "^12.") | str_detect(src, "^13.") | str_detect(src, "^14."))  %>%
+  filter(str_detect(dst, "^12.") | str_detect(dst, "^13.") | str_detect(dst, "^14."))  %>% group_by(src) %>% summarise(count = n()) %>% arrange(desc(count)) %>% slice(1)
+z6 |> collect()
+```
+
+    # A tibble: 1 × 2
+      src         count
+      <chr>       <int>
+    1 13.42.70.40 65109
+
+Ответ  
+13.42.70.40
 
 ## Оценка результатов
 

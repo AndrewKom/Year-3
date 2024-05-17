@@ -35,36 +35,26 @@ library(tidyverse, warn.conflicts = FALSE)
 library(duckdb, warn.conflicts = FALSE)
 ```
 
+```{r}
+connection <- dbConnect(duckdb::duckdb(), dbdir = "")
+dbExecute(conn = connection, "INSTALL httpfs; LOAD httpfs;")
+PQF = "https://storage.yandexcloud.net/arrow-datasets/tm_data.pqt"
+SQL <- "SELECT * FROM read_parquet([?])"
+data <- dbGetQuery(connection, SQL, list(PQF))
+```
+
 ### Задание 1: Найдите утечку данных из Вашей сети
 
 Важнейшие документы с результатами нашей исследовательской деятельности в области создания вакцин скачиваются в виде больших заархивированных дампов. Один из хостов в нашей сети используется для пересылки этой информации – он пересылает гораздо больше информации на внешние ресурсы в Интернете, чем остальные компьютеры нашей сети. Определите его IP-адрес
 
 ```{r}
-dir.create("data", showWarnings = FALSE)
-
-curl::multi_download(
-  "https://storage.yandexcloud.net/arrow-datasets/tm_data.pqt",
-  "data/testdata",
-  resume = TRUE
-)
-
-```
-
-```{r}
-dt <- open_dataset(
-  sources = "data/testdata",
-  schema = schema(timestamp=int64(),src=utf8(),dst=utf8(),port=uint32(),bytes=uint32())
-)
-glimpse(dt) 
-```
-
-```{r}
-z1 <- dt %>%
+z1 <- data %>%
   filter(str_detect(src, "^12.") | str_detect(src, "^13.") | str_detect(src, "^14."))  %>%
-  filter(!str_detect(dst, "^12.") | !str_detect(dst, "^13.") | !str_detect(dst, "^14."))  %>%
+  filter(!grepl('^1[2-4].*', dst))  %>%
   group_by(src) %>% summarise("sum" = sum(bytes)) %>%  
-  filter(sum>6000000000) %>% select(src,sum) 
+  arrange(desc(sum)) %>% select(src,sum) %>% slice(1)
 z1 |> collect()
+
 ```
 
 Ответ
@@ -76,7 +66,7 @@ z1 |> collect()
 Другой атакующий установил автоматическую задачу в системном планировщике cron для экспорта содержимого внутренней wiki системы. Эта система генерирует большое количество трафика в нерабочие часы, больше чем остальные хосты. Определите IP этой системы. Известно, что ее IP адрес отличается от нарушителя из предыдущей задачи
 
 ```{r}
-z2 <- dt %>%
+z2 <- data %>%
       select(timestamp, src, dst, bytes) %>%
       mutate(trafic = (str_detect(src, "^((12|13|14)\\.)") & !str_detect(dst, "^((12|13|14)\\.)")),time = hour(as_datetime(timestamp/1000))) %>%
       filter(trafic == TRUE, time >= 0 & time <= 24) %>% group_by(time) %>%
@@ -86,16 +76,16 @@ z2 |> collect()
 
 Определяем рабочие часы:
 
-:   Учитывая нагрузку на трафик, рабочее время: 16:00-24:00
+:   Учитывая нагрузку на трафик, рабочее время: 16:00-23:00
 
 ```{r}
-z2_2 <- dt %>% mutate(time = hour(as_datetime(timestamp/1000))) %>% 
+z2_2 <- data %>% mutate(time = hour(as_datetime(timestamp/1000))) %>% 
   filter(!str_detect(src, "^13.37.84.125")) %>% 
   filter(str_detect(src, "^12.") | str_detect(src, "^13.") | str_detect(src, "^14."))  %>%
-  filter(!str_detect(dst, "^12.") | !str_detect(dst, "^13.") | !str_detect(dst, "^14."))  %>%
-  filter(time >= 1 & time <= 15) %>% 
+  filter(!grepl('^1[2-4].*', dst))  %>%
+  filter(time >= 0 & time <= 15) %>% 
   group_by(src) %>% summarise("sum" = sum(bytes)) %>%
-  filter(sum>290000000) %>% select(src,sum) 
+  arrange(desc(sum)) %>% select(src,sum) %>% slice(1)
 z2_2 |> collect()
 ```
 
@@ -108,7 +98,7 @@ z2_2 |> collect()
 Еще один нарушитель собирает содержимое электронной почты и отправляет в Интернет используя порт, который обычно используется для другого типа трафика. Атакующий пересылает большое количество информации используя этот порт,которое нехарактерно для других хостов, использующих этот номер порта. Определите IP этой системы. Известно, что ее IP адрес отличается от нарушителей из предыдущих задач
 
 ```{r}
-z3 <- dt %>% filter(!str_detect(src, "^13.37.84.125")) %>% 
+z3 <- data %>% filter(!str_detect(src, "^13.37.84.125")) %>% 
   filter(!str_detect(src, "^12.55.77.96")) %>% 
   filter(str_detect(src, "^12.") | str_detect(src, "^13.") | str_detect(src, "^14."))  %>%
   filter(!str_detect(dst, "^12.") | !str_detect(dst, "^13.") | !str_detect(dst, "^14."))  %>% select(src, bytes, port) 
@@ -136,6 +126,16 @@ z3_2 |> collect()
 
 Како номер порта использует бот-панель для управления ботами?
 
+```{r}
+z4 <- data %>% group_by(port) %>% 
+  summarise(z4_1 = mean(bytes)-min(bytes)) %>% arrange(z4_1) %>% filter(z4_1!=0) %>% select(port,z4_1) %>% slice(1)
+z4 |> collect()
+```
+
+Ответ
+
+:   124
+
 ### Задание 5: Обнаружение P2P трафика
 
 Иногда компрометация сети проявляется в нехарактерном трафике между хостами в локальной сети, который свидетельствует о горизонтальном перемещении (lateral movement).
@@ -144,11 +144,36 @@ z3_2 |> collect()
 
 Какой уникальный порт используется этой бот сетью для внутреннего общения между собой?
 
+```{r}
+z5 <- data %>%
+  filter(str_detect(src, "^12.") | str_detect(src, "^13.") | str_detect(src, "^14."))  %>%
+  filter(str_detect(dst, "^12.") | str_detect(dst, "^13.") | str_detect(dst, "^14."))  %>% 
+  group_by(port) %>%
+  summarise(z5_1 = max(bytes) - min(bytes)) %>%
+  arrange(desc(z5_1)) %>% select(port) %>% slice(1)
+z5 |> collect()
+```
+
+Ответ
+
+:   115
+
 ### Задание 6: Чемпион малвари
 
 Нашу сеть только что внесли в списки спам-ферм. Один из хостов сети получает множество команд от панели C&C, ретранслируя их внутри сети. В обычных условиях причин для такого активного взаимодействия внутри сети у данного хоста нет.
 
 Определите IP такого хоста.
+
+```{r}
+z6 <- data %>%
+  filter(str_detect(src, "^12.") | str_detect(src, "^13.") | str_detect(src, "^14."))  %>%
+  filter(str_detect(dst, "^12.") | str_detect(dst, "^13.") | str_detect(dst, "^14."))  %>% group_by(src) %>% summarise(count = n()) %>% arrange(desc(count)) %>% slice(1)
+z6 |> collect()
+```
+
+Ответ
+
+:   13.42.70.40
 
 ## Оценка результатов
 
